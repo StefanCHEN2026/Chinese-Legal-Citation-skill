@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtualenv
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Skill outputs (keep user files private)
+*_已修订.docx
+*_备份.docx
+sample_*.json
+test_corrections.json
+footnotes.json
+corrections.json
+debug_*.py
+debug_*.txt
+verify*.json
+check_final.py
+
+# User documents (never commit real papers)
+*_期末作业*.docx
+
+# Claude Code local settings (per-user)
+.claude/
+
+# PDF source (large file, lives in release assets)
+*.pdf
