@@ -630,8 +630,10 @@ def add_blue_comment_to_footnote_range(footnote_elem, comment_text, comment_id):
     end = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd')
     end.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
 
-    # 创建 commentReference（必须在 commentRangeEnd 之后，标记在段落末尾）
-    ref = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference')
+    # 创建 commentReference（OOXML 规范要求必须放在 w:r 元素内，不能直接作为 w:p 的子元素）
+    ref_run = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r')
+    ref_run_rPr = etree.SubElement(ref_run, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
+    ref = etree.SubElement(ref_run, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference')
     ref.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
 
     # 创建批注元素
