@@ -789,6 +789,40 @@ def process_corrections(docx_path, corrections, output_path):
             ct_tree, xml_declaration=True, encoding='UTF-8', standalone=True
         )
 
+    # 更新 word/_rels/document.xml.rels 以包含 comments 的关系引用
+    # 缺少此关系引用会导致 Word 忽略 comments.xml，批注不显示
+    RELS_NS = 'http://schemas.openxmlformats.org/package/2006/relationships'
+    COMMENTS_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+
+    rels_path = 'word/_rels/document.xml.rels'
+    rels_xml = all_parts.get(rels_path, b'')
+    if rels_xml:
+        rels_tree = etree.fromstring(rels_xml)
+        has_comments_rel = False
+        for rel in rels_tree.iter('{{{}}}Relationship'.format(RELS_NS)):
+            if rel.get('Type') == COMMENTS_REL_TYPE:
+                has_comments_rel = True
+                break
+        if not has_comments_rel:
+            # 生成新的 rId
+            max_rid = 0
+            for rel in rels_tree.iter('{{{}}}Relationship'.format(RELS_NS)):
+                rid = rel.get('Id', '')
+                if rid.startswith('rId'):
+                    try:
+                        num = int(rid[3:])
+                        max_rid = max(max_rid, num)
+                    except ValueError:
+                        pass
+            new_rid = f'rId{max_rid + 1}'
+            new_rel = etree.SubElement(rels_tree, '{{{}}}Relationship'.format(RELS_NS))
+            new_rel.set('Id', new_rid)
+            new_rel.set('Type', COMMENTS_REL_TYPE)
+            new_rel.set('Target', 'comments.xml')
+            all_parts[rels_path] = etree.tostring(
+                rels_tree, xml_declaration=True, encoding='UTF-8', standalone=True
+            )
+
     # 写入新 docx
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zout:
         for name, data in all_parts.items():
