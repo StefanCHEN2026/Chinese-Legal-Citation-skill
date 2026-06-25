@@ -13,6 +13,17 @@
     "old_text": "Yan and Hyman",
     "new_text": "Yan & Hyman",
     "reason": "两位英文作者之间应使用 & 而非 and"
+  },
+  {
+    "footnote_id": "3",
+    "rule": "第103条",
+    "error_type": "书名未用斜体",
+    "old_text": "Introduction to Comparative Law",
+    "new_text": "Introduction to Comparative Law",
+    "reason": "英文书名应使用斜体",
+    "format_changes": {
+      "italic": true
+    }
   }
 ]
 ```
@@ -28,6 +39,7 @@
 | `new_text` | string | 是 | 替换后的修正文本片段 |
 | `reason` | string | 是 | 详细修改理由，会写入蓝色批注 |
 | `comment_only` | bool | 否 | 仅添加批注而不修改文本（默认 `false`）。用于需要人工判断的场景 |
+| `format_changes` | object | 否 | 格式修正设置，用于修正斜体/正体等格式属性。详见下方"格式修正"章节 |
 
 ## old_text 要求
 
@@ -105,6 +117,38 @@
 }
 ```
 
+### 英文-书名斜体修正
+
+```json
+{
+  "footnote_id": "3",
+  "rule": "第103条",
+  "error_type": "书名未用斜体",
+  "old_text": "Introduction to Comparative Law",
+  "new_text": "Introduction to Comparative Law",
+  "reason": "英文书名应使用斜体，而非正体",
+  "format_changes": {
+    "italic": true
+  }
+}
+```
+
+### 英文-文章名去斜体（改回正体）
+
+```json
+{
+  "footnote_id": "5",
+  "rule": "第103条",
+  "error_type": "文章名误用斜体",
+  "old_text": "Hard Cases",
+  "new_text": "Hard Cases",
+  "reason": "英文文章标题应使用正体，不应斜体",
+  "format_changes": {
+    "italic": false
+  }
+}
+```
+
 ### 纯批注（不修改文本）
 
 ```json
@@ -118,6 +162,28 @@
   "comment_only": true
 }
 ```
+
+## 格式修正（`format_changes`）
+
+用于修正字符格式属性，如斜体、正体等。当前支持的属性：
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `italic` | bool | `true` = 应用斜体；`false` = 移除斜体改用正体 |
+
+格式修正通过修订模式的 `w:ins` 元素实现：被标记为"删除"的旧文本保留原始斜体状态，被标记为"插入"的新文本应用 `format_changes` 指定的斜体状态。Word 接受修订后新文本将获得正确的格式。
+
+**适用场景**（根据《法学引注手册》规则）：
+
+| 规则 | 应使用斜体 | 应使用正体 |
+|------|-----------|-----------|
+| 第103条 | 书名（如 *Introduction to Comparative Law*） | 文章标题 |
+| 第103条 | 文集名（如 *Taking Rights Seriously*） | — |
+| 第112条 | 案例名（如 *Marbury v. Madison*） | — |
+| 第112条 | v.（如 Marbury *v.* Madison） | — |
+| 第106条 | — | 报纸名正体或斜体均可（全书统一） |
+
+> **注意**：`old_text` 和 `new_text` 可以相同，此时仅修改格式不修改文字。修订模式会显示为"格式变更"。
 
 ## 生成注意事项
 

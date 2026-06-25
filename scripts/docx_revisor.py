@@ -88,7 +88,7 @@ def get_default_font_props(lang):
     if lang == 'zh':
         return {
             'ascii': FONT_TIMES_NEW_ROMAN,
-            'hAnsi': FONT_TIMES_NEW_ROMAN,
+            'hAnsi': FONT_SIMSUN,        # 中文上下文中的标点符号（引号等）使用宋体
             'eastAsia': FONT_SIMSUN,
             'sz': None  # 将在调用方从原始run获取
         }
@@ -114,9 +114,9 @@ def extract_font_props_from_run(run_elem):
         run_elem: lxml Element (w:r)
 
     返回：
-        dict: {'ascii': str|None, 'hAnsi': str|None, 'eastAsia': str|None, 'sz': str|None, 'rStyle': str|None}
+        dict: {'ascii': str|None, 'hAnsi': str|None, 'eastAsia': str|None, 'sz': str|None, 'rStyle': str|None, 'italic': bool|None}
     """
-    props = {'ascii': None, 'hAnsi': None, 'eastAsia': None, 'sz': None, 'rStyle': None}
+    props = {'ascii': None, 'hAnsi': None, 'eastAsia': None, 'sz': None, 'rStyle': None, 'italic': None}
     rPr = run_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
     if rPr is None:
         return props
@@ -133,6 +133,12 @@ def extract_font_props_from_run(run_elem):
     sz = rPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz')
     if sz is not None:
         props['sz'] = sz.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
+    # 检测斜体状态
+    i_elem = rPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}i')
+    if i_elem is not None:
+        val = i_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
+        # val == 'false' or '0' 表示关闭斜体；无 val 或 val='true' 表示开启
+        props['italic'] = not (val == 'false' or val == '0')
     return props
 
 
@@ -154,16 +160,17 @@ def merge_font_props(default_props, original_props):
     return merged
 
 
-def apply_font_props_to_rpr(rPr, font_props):
+def apply_font_props_to_rpr(rPr, font_props, italic=None):
     """
     将字体属性写入 w:rPr 元素。
 
     参数：
         rPr: w:rPr lxml Element
         font_props: 字体属性 dict
+        italic: 斜体标记，True=斜体, False=正体, None=不修改
     """
     if not font_props:
-        return
+        font_props = {}
 
     rFonts = etree.SubElement(rPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rFonts')
     if font_props.get('ascii'):
@@ -179,8 +186,14 @@ def apply_font_props_to_rpr(rPr, font_props):
         szCs = etree.SubElement(rPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}szCs')
         szCs.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', font_props['sz'])
 
+    # 斜体处理
+    if italic is not None:
+        i_elem = etree.SubElement(rPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}i')
+        if not italic:
+            i_elem.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'false')
 
-def make_del_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
+
+def make_del_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None, italic=None):
     """
     创建 w:del 元素（修订模式的删除标记）
 
@@ -188,6 +201,8 @@ def make_del_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
         text: 要标记为删除的文本
         author: 修订者名称
         rev_id: 修订ID
+        font_props: 字体属性 dict
+        italic: 斜体标记，True=斜体, False=正体, None=保持原始（不作修改）
 
     返回：
         lxml Element: 删除修订元素
@@ -203,8 +218,7 @@ def make_del_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
     # 添加 run
     r = etree.SubElement(del_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r')
     rPr = etree.SubElement(r, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
-    if font_props:
-        apply_font_props_to_rpr(rPr, font_props)
+    apply_font_props_to_rpr(rPr, font_props, italic=italic)
     etree.SubElement(rPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}delText')
     del_text = etree.SubElement(r, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}delText')
     del_text.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
@@ -213,7 +227,7 @@ def make_del_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
     return del_elem
 
 
-def make_ins_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
+def make_ins_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None, italic=None):
     """
     创建 w:ins 元素（修订模式的插入标记）
 
@@ -222,6 +236,7 @@ def make_ins_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
         author: 修订者名称
         rev_id: 修订ID
         font_props: 字体属性 dict
+        italic: 斜体标记，True=斜体, False=正体, None=保持原始（不作修改）
 
     返回：
         lxml Element: 插入修订元素
@@ -236,8 +251,7 @@ def make_ins_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None):
 
     r = etree.SubElement(ins_elem, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r')
     rPr = etree.SubElement(r, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
-    if font_props:
-        apply_font_props_to_rpr(rPr, font_props)
+    apply_font_props_to_rpr(rPr, font_props, italic=italic)
     t = etree.SubElement(r, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
     t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
     t.text = text
@@ -352,7 +366,7 @@ def _set_deepcopy_run_text(run_elem, text):
         t.text = text if i == 0 else None
 
 
-def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id):
+def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id, italic=None):
     """
     执行简单的文本替换（修订模式）。
 
@@ -365,6 +379,7 @@ def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id):
         old_text: 要替换的旧文本
         new_text: 替换后的新文本
         rev_id: 修订ID
+        italic: 斜体标记，True=斜体, False=正体, None=保持原始不作修改
 
     返回：
         bool: 是否成功找到并替换
@@ -372,7 +387,7 @@ def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id):
     result = find_text_in_footnote_run(footnote_elem, old_text)
     if not result:
         # 单 run 搜索失败，尝试跨 run 搜索
-        if apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id):
+        if apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id, italic=italic):
             return True
         print(f"  警告：在脚注中未找到文本: '{old_text}'")
         return False
@@ -388,16 +403,23 @@ def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id):
     if para is None or block_index < 0:
         return False
 
-    # 提取原始字体属性并合并语言默认值
+    # 提取原始字体属性
     original_font = extract_font_props_from_run(parent)
-    new_lang = detect_text_language(new_text)
-    default_font = get_default_font_props(new_lang)
+
+    # 使用 run 的完整文本（上下文）判定语言，而非仅依赖 new_text
+    # 这样中文上下文中的替换（如 and→&）也能获得中文默认字体
+    context_text = t_elem.text if t_elem.text else old_text
+    context_lang = detect_text_language(context_text)
+    default_font = get_default_font_props(context_lang)
     font_props = merge_font_props(default_font, original_font)
+
+    # 确定 del 元素的斜体（使用原始 run 的斜体状态）
+    del_italic = original_font.get('italic') if italic is not None else None
 
     # 替换整个 run 内容的情况（简单情况：run 内容恰好是 old_text）
     if t_elem.text == old_text:
-        del_elem = make_del_element(old_text, rev_id=rev_id, font_props=font_props)
-        ins_elem = make_ins_element(new_text, rev_id=rev_id, font_props=font_props)
+        del_elem = make_del_element(old_text, rev_id=rev_id, font_props=font_props, italic=del_italic)
+        ins_elem = make_ins_element(new_text, rev_id=rev_id, font_props=font_props, italic=italic)
 
         para.remove(block_to_remove)
         para.insert(block_index, ins_elem)
@@ -421,12 +443,12 @@ def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id):
         insert_pos += 1
 
     # del 部分
-    del_elem = make_del_element(old_text, rev_id=rev_id, font_props=font_props)
+    del_elem = make_del_element(old_text, rev_id=rev_id, font_props=font_props, italic=del_italic)
     para.insert(insert_pos, del_elem)
     insert_pos += 1
 
     # ins 部分
-    ins_elem = make_ins_element(new_text, rev_id=rev_id, font_props=font_props)
+    ins_elem = make_ins_element(new_text, rev_id=rev_id, font_props=font_props, italic=italic)
     para.insert(insert_pos, ins_elem)
     insert_pos += 1
 
@@ -439,7 +461,7 @@ def apply_simple_text_replacement(footnote_elem, old_text, new_text, rev_id):
     return True
 
 
-def apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id):
+def apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id, italic=None):
     """
     跨 run 文本替换（当单 run 搜索失败时的回退方案）。
 
@@ -453,6 +475,7 @@ def apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id):
         old_text: 要替换的旧文本
         new_text: 替换后的新文本
         rev_id: 修订ID
+        italic: 斜体标记，True=斜体, False=正体, None=保持原始不作修改
 
     返回：
         bool: 是否成功找到并替换
@@ -504,11 +527,14 @@ def apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id):
         if first_overlap == -1:
             continue
 
-        # 提取字体属性
+        # 提取字体属性，使用完整段落文本（上下文）判定语言
         original_font = extract_font_props_from_run(segments[first_overlap][1])
-        new_lang = detect_text_language(new_text)
-        default_font = get_default_font_props(new_lang)
+        context_lang = detect_text_language(full_text) if full_text else detect_text_language(old_text)
+        default_font = get_default_font_props(context_lang)
         font_props = merge_font_props(default_font, original_font)
+
+        # 确定 del 元素的斜体（使用原始 run 的斜体状态）
+        del_italic = original_font.get('italic') if italic is not None else None
 
         # 收集要移除的块（每个 block 只移除一次）
         blocks_to_remove = {}  # para_index -> block_element
@@ -546,7 +572,7 @@ def apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id):
                 insert_pos += 1
 
             if matched:
-                del_elem = make_del_element(matched, rev_id=rev_id, font_props=font_props)
+                del_elem = make_del_element(matched, rev_id=rev_id, font_props=font_props, italic=del_italic)
                 para.insert(insert_pos, del_elem)
                 insert_pos += 1
 
@@ -556,7 +582,7 @@ def apply_cross_run_replacement(footnote_elem, old_text, new_text, rev_id):
                 para.insert(insert_pos, after_run)
                 insert_pos += 1
 
-        ins_elem = make_ins_element(new_text, rev_id=rev_id, font_props=font_props)
+        ins_elem = make_ins_element(new_text, rev_id=rev_id, font_props=font_props, italic=italic)
         para.insert(insert_pos, ins_elem)
 
         return True
@@ -600,13 +626,13 @@ def add_blue_comment_to_footnote_range(footnote_elem, comment_text, comment_id):
     # 将 commentRangeStart 移到段落开头
     first_para.insert(0, start)
 
-    # 创建 commentReference（标记在段落中）
-    ref = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference')
-    ref.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
-
-    # 创建 commentRangeEnd
+    # 创建 commentRangeEnd（必须在 commentReference 之前，符合 OOXML 规范）
     end = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd')
     end.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
+
+    # 创建 commentReference（必须在 commentRangeEnd 之后，标记在段落末尾）
+    ref = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference')
+    ref.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
 
     # 创建批注元素
     comment_elem = make_blue_comment_element(comment_text, comment_id=comment_id)
@@ -684,22 +710,41 @@ def process_corrections(docx_path, corrections, output_path):
                     new_text = corr.get('new_text', '')
                     rule = corr.get('rule', '')
                     reason = corr.get('reason', '')
+                    format_changes = corr.get('format_changes', {})
 
-                    # 执行文本替换
-                    success = apply_simple_text_replacement(fn_elem, old_text, new_text, rev_id)
+                    # 解析斜体设置
+                    italic = None
+                    if isinstance(format_changes, dict) and 'italic' in format_changes:
+                        italic = format_changes['italic']  # True=加斜体, False=去斜体(正体)
+
+                    if corr.get('comment_only', False):
+                        # 仅批注，不修改文本
+                        success = False
+                    else:
+                        # 执行文本替换
+                        success = apply_simple_text_replacement(fn_elem, old_text, new_text, rev_id, italic=italic)
 
                     # 添加蓝色批注
                     if success or corr.get('comment_only', False):
                         comment_text = f"[{rule}] {corr.get('error_type', '格式错误')}：{reason}"
                         if old_text and new_text and old_text != new_text:
                             comment_text += f"\n修正：\"{old_text}\" → \"{new_text}\""
+                        if isinstance(format_changes, dict) and format_changes:
+                            fmt_desc = []
+                            fc_italic = format_changes.get('italic')
+                            if fc_italic is True:
+                                fmt_desc.append('应用斜体')
+                            elif fc_italic is False:
+                                fmt_desc.append('改用正体')
+                            if fmt_desc:
+                                comment_text += f"\n格式修正：{'，'.join(fmt_desc)}"
 
                         comment_elem = add_blue_comment_to_footnote_range(
                             fn_elem, comment_text, comment_id
                         )
 
                         if comment_elem is not None:
-                            all_comments.append(comment_elem[0])
+                            all_comments.append(comment_elem)    # comment_elem 本身就是 <w:comment> 元素
                             comment_id += 1
 
                     rev_id += 1
