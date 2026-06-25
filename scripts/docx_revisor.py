@@ -259,42 +259,45 @@ def make_ins_element(text, author=REVISION_AUTHOR, rev_id=1, font_props=None, it
     return ins_elem
 
 
-def make_blue_comment_element(text, author=REVISION_AUTHOR, comment_id=1):
+def make_blue_annotation_run(text, font_props=None):
     """
-    创建蓝色批注元素
+    创建蓝色注解 run 元素（内联蓝色文字，直接放在脚注段落中）。
 
     参数：
-        text: 批注文本
-        author: 批注作者
-        comment_id: 批注ID
+        text: 注解文本
+        font_props: 字体属性 dict（包含 sz 等），默认使用宋体 10pt 蓝色
 
     返回：
-        lxml Element: 批注元素
+        lxml Element: w:r 元素
     """
-    comment = etree.SubElement(
-        etree.Element('root'),
-        '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comment'
-    )
-    comment.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
-    comment.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}author', author)
-    comment.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}date', REVISION_DATE)
-    comment.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}initials', 'YZZK')
+    if font_props is None:
+        font_props = {}
+    WML = WML_NS
+    r = etree.SubElement(etree.Element('root'), '{{{}}}r'.format(WML))
+    rPr = etree.SubElement(r, '{{{}}}rPr'.format(WML))
 
-    # 添加段落
-    p = etree.SubElement(comment, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
-    pPr = etree.SubElement(p, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}pPr')
-    r = etree.SubElement(p, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r')
-    rPr = etree.SubElement(r, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
+    # 字体：宋体
+    rFonts = etree.SubElement(rPr, '{{{}}}rFonts'.format(WML))
+    rFonts.set('{{{}}}ascii'.format(WML), FONT_SIMSUN)
+    rFonts.set('{{{}}}hAnsi'.format(WML), FONT_SIMSUN)
+    rFonts.set('{{{}}}eastAsia'.format(WML), FONT_SIMSUN)
 
-    # 设置蓝色 (0000FF)
-    color = etree.SubElement(rPr, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color')
-    color.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', '0000FF')
+    # 字号：使用传入的 sz 或默认 20 (10pt)
+    sz_val = font_props.get('sz', '20')
+    sz = etree.SubElement(rPr, '{{{}}}sz'.format(WML))
+    sz.set('{{{}}}val'.format(WML), sz_val)
+    szCs = etree.SubElement(rPr, '{{{}}}szCs'.format(WML))
+    szCs.set('{{{}}}val'.format(WML), sz_val)
 
-    t = etree.SubElement(r, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')
+    # 蓝色 (0000FF)
+    color = etree.SubElement(rPr, '{{{}}}color'.format(WML))
+    color.set('{{{}}}val'.format(WML), '0000FF')
+
+    t = etree.SubElement(r, '{{{}}}t'.format(WML))
     t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
     t.text = text
 
-    return comment
+    return r
 
 
 def find_text_in_footnote_run(footnote_elem, search_text):
@@ -599,47 +602,28 @@ def _extract_run_text(run_elem, WML):
     return text
 
 
-def add_blue_comment_to_footnote_range(footnote_elem, comment_text, comment_id):
+def add_blue_annotation_to_footnote(footnote_elem, annotation_text, font_props=None):
     """
-    在脚注范围的起始和结束位置添加评论标记。
-    将评论添加到 comments.xml（需在外部处理）。
+    在脚注第一段末尾追加蓝色注解文字（内联方式，直接写在脚注内容中）。
 
-    此函数在脚注段落中添加 w:commentRangeStart 和 w:commentRangeEnd 标记。
+    与 OOXML 批注（commentRangeStart/End/Reference + comments.xml）不同，
+    此方法直接在脚注段落中添加蓝色 <w:r> 元素，简单可靠，不依赖复杂的 OOXML 批注机制。
 
     参数：
         footnote_elem: 脚注 lxml Element
-        comment_text: 批注文本
-        comment_id: 批注ID
+        annotation_text: 注解文本
+        font_props: 字体属性（用于继承字号等）
 
     返回：
-        (comment_xml_element, comment_range_start, comment_range_end): 批注元素
+        bool: 是否成功添加
     """
-    # 获取脚注的第一个段落
     first_para = footnote_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
     if first_para is None:
-        return None
+        return False
 
-    # 创建 commentRangeStart
-    start = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart')
-    start.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
-
-    # 将 commentRangeStart 移到段落开头
-    first_para.insert(0, start)
-
-    # 创建 commentRangeEnd（必须在 commentReference 之前，符合 OOXML 规范）
-    end = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd')
-    end.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
-
-    # 创建 commentReference（OOXML 规范要求必须放在 w:r 元素内，不能直接作为 w:p 的子元素）
-    ref_run = etree.SubElement(first_para, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r')
-    ref_run_rPr = etree.SubElement(ref_run, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
-    ref = etree.SubElement(ref_run, '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentReference')
-    ref.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id', str(comment_id))
-
-    # 创建批注元素
-    comment_elem = make_blue_comment_element(comment_text, comment_id=comment_id)
-
-    return comment_elem
+    annotation_run = make_blue_annotation_run(annotation_text, font_props=font_props)
+    first_para.append(annotation_run)
+    return True
 
 
 def process_corrections(docx_path, corrections, output_path):
@@ -667,23 +651,10 @@ def process_corrections(docx_path, corrections, output_path):
     shutil.copy2(docx_path, output_path)
 
     rev_id = REVISION_ID_BASE
-    comment_id = 1
-    all_comments = []
+    annotation_count = 0
 
     with zipfile.ZipFile(output_path, 'r') as z:
         footnotes_xml = z.read('word/footnotes.xml')
-        # 读取或创建 comments.xml
-        try:
-            comments_xml = z.read('word/comments.xml')
-            comments_tree = etree.fromstring(comments_xml)
-        except KeyError:
-            # 创建新的 comments.xml
-            comments_root = etree.Element(
-                '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comments',
-                nsmap={'w': WML_NS}
-            )
-            comments_tree = comments_root
-
         all_parts = {}
         for name in z.namelist():
             all_parts[name] = z.read(name)
@@ -706,7 +677,9 @@ def process_corrections(docx_path, corrections, output_path):
             if fn_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id') == str(fn_id):
                 fn_found = True
 
-                # 处理该脚注的每个修订
+                # 收集该脚注所有修正的蓝色注解（先执行替换，再汇总添加一条注解）
+                fn_annotations = []
+
                 for corr in fn_corrections:
                     old_text = corr.get('old_text', '')
                     new_text = corr.get('new_text', '')
@@ -726,109 +699,54 @@ def process_corrections(docx_path, corrections, output_path):
                         # 执行文本替换
                         success = apply_simple_text_replacement(fn_elem, old_text, new_text, rev_id, italic=italic)
 
-                    # 添加蓝色批注
+                    # 生成蓝色注解文本
                     if success or corr.get('comment_only', False):
-                        comment_text = f"[{rule}] {corr.get('error_type', '格式错误')}：{reason}"
+                        ann_lines = [f"[{rule}] {corr.get('error_type', '格式错误')}"]
+                        ann_lines.append(f"原因：{reason}")
                         if old_text and new_text and old_text != new_text:
-                            comment_text += f"\n修正：\"{old_text}\" → \"{new_text}\""
+                            ann_lines.append(f"修正：\"{old_text}\" -> \"{new_text}\"")
                         if isinstance(format_changes, dict) and format_changes:
-                            fmt_desc = []
                             fc_italic = format_changes.get('italic')
                             if fc_italic is True:
-                                fmt_desc.append('应用斜体')
+                                ann_lines.append("格式：应用斜体")
                             elif fc_italic is False:
-                                fmt_desc.append('改用正体')
-                            if fmt_desc:
-                                comment_text += f"\n格式修正：{'，'.join(fmt_desc)}"
-
-                        comment_elem = add_blue_comment_to_footnote_range(
-                            fn_elem, comment_text, comment_id
-                        )
-
-                        if comment_elem is not None:
-                            all_comments.append(comment_elem)    # comment_elem 本身就是 <w:comment> 元素
-                            comment_id += 1
+                                ann_lines.append("格式：改用正体")
+                        fn_annotations.append("；".join(ann_lines))
+                        annotation_count += 1
 
                     rev_id += 1
+
+                # 在该脚注末尾添加一条蓝色注解（而非每条修正一条）
+                if fn_annotations:
+                    combined = "【修正说明】" + " | ".join(fn_annotations)
+                    # 提取脚注第一个run的字号用于注解
+                    first_para = fn_elem.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p')
+                    ann_font = {}
+                    if first_para is not None:
+                        first_run = first_para.find('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r')
+                        if first_run is not None:
+                            rPr = first_run.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}rPr')
+                            if rPr is not None:
+                                sz_elem = rPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz')
+                                if sz_elem is not None:
+                                    ann_font['sz'] = sz_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
+                    add_blue_annotation_to_footnote(fn_elem, combined, font_props=ann_font)
                 break
 
         if not fn_found:
             print(f"  警告：未找到脚注 ID={fn_id}")
 
-    # 更新 comments.xml
-    comments_tree = etree.Element(
-        '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comments',
-        nsmap={'w': WML_NS}
-    )
-    for cmt in all_comments:
-        comments_tree.append(cmt)
-
-    # 重新打包 docx
+    # 重新打包 docx（无需 comments.xml / Content_Types / rels 的额外维护）
     all_parts['word/footnotes.xml'] = etree.tostring(
         footnotes_tree, xml_declaration=True, encoding='UTF-8', standalone=True
     )
-    all_parts['word/comments.xml'] = etree.tostring(
-        comments_tree, xml_declaration=True, encoding='UTF-8', standalone=True
-    )
-
-    # 更新 [Content_Types].xml 以确保包含 comments
-    content_types_xml = all_parts.get('[Content_Types].xml', b'')
-    if content_types_xml:
-        ct_tree = etree.fromstring(content_types_xml)
-        # 检查是否已有 comments 的内容类型
-        has_comments_ct = False
-        for override in ct_tree.iter('{http://schemas.openxmlformats.org/package/2006/content-types}Override'):
-            if override.get('PartName') == '/word/comments.xml':
-                has_comments_ct = True
-                break
-        if not has_comments_ct:
-            override = etree.SubElement(ct_tree, '{http://schemas.openxmlformats.org/package/2006/content-types}Override')
-            override.set('PartName', '/word/comments.xml')
-            override.set('ContentType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml')
-        all_parts['[Content_Types].xml'] = etree.tostring(
-            ct_tree, xml_declaration=True, encoding='UTF-8', standalone=True
-        )
-
-    # 更新 word/_rels/document.xml.rels 以包含 comments 的关系引用
-    # 缺少此关系引用会导致 Word 忽略 comments.xml，批注不显示
-    RELS_NS = 'http://schemas.openxmlformats.org/package/2006/relationships'
-    COMMENTS_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
-
-    rels_path = 'word/_rels/document.xml.rels'
-    rels_xml = all_parts.get(rels_path, b'')
-    if rels_xml:
-        rels_tree = etree.fromstring(rels_xml)
-        has_comments_rel = False
-        for rel in rels_tree.iter('{{{}}}Relationship'.format(RELS_NS)):
-            if rel.get('Type') == COMMENTS_REL_TYPE:
-                has_comments_rel = True
-                break
-        if not has_comments_rel:
-            # 生成新的 rId
-            max_rid = 0
-            for rel in rels_tree.iter('{{{}}}Relationship'.format(RELS_NS)):
-                rid = rel.get('Id', '')
-                if rid.startswith('rId'):
-                    try:
-                        num = int(rid[3:])
-                        max_rid = max(max_rid, num)
-                    except ValueError:
-                        pass
-            new_rid = f'rId{max_rid + 1}'
-            new_rel = etree.SubElement(rels_tree, '{{{}}}Relationship'.format(RELS_NS))
-            new_rel.set('Id', new_rid)
-            new_rel.set('Type', COMMENTS_REL_TYPE)
-            new_rel.set('Target', 'comments.xml')
-            all_parts[rels_path] = etree.tostring(
-                rels_tree, xml_declaration=True, encoding='UTF-8', standalone=True
-            )
 
     # 写入新 docx
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zout:
         for name, data in all_parts.items():
             zout.writestr(name, data)
 
-    print(f"\n修订完成。共处理 {len(corrections)} 处修订，生成 {comment_id - 1} 条批注。")
+    print(f"\n修订完成。共处理 {len(corrections)} 处修订，生成 {annotation_count} 条蓝色注解。")
     print(f"输出文件: {output_path}")
 
 
