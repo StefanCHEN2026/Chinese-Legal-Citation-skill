@@ -699,19 +699,16 @@ def process_corrections(docx_path, corrections, output_path):
                         # 执行文本替换
                         success = apply_simple_text_replacement(fn_elem, old_text, new_text, rev_id, italic=italic)
 
-                    # 生成蓝色注解文本
+                    # 生成蓝色注解文本（简洁版：仅规则+错误类型+原因）
                     if success or corr.get('comment_only', False):
-                        ann_lines = [f"[{rule}] {corr.get('error_type', '格式错误')}"]
-                        ann_lines.append(f"原因：{reason}")
-                        if old_text and new_text and old_text != new_text:
-                            ann_lines.append(f"修正：\"{old_text}\" -> \"{new_text}\"")
+                        parts = [f"[{rule}] {corr.get('error_type', '格式错误')}：{reason}"]
                         if isinstance(format_changes, dict) and format_changes:
                             fc_italic = format_changes.get('italic')
                             if fc_italic is True:
-                                ann_lines.append("格式：应用斜体")
+                                parts.append("应用斜体")
                             elif fc_italic is False:
-                                ann_lines.append("格式：改用正体")
-                        fn_annotations.append("；".join(ann_lines))
+                                parts.append("改用正体")
+                        fn_annotations.append("；".join(parts))
                         annotation_count += 1
 
                     rev_id += 1
